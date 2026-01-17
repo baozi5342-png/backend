@@ -1,6 +1,6 @@
 /**
  * backend/server.js
- * 终极兜底版：所有逻辑都在一个文件里，保证 100% 可启动
+ * 最终稳定版（pool.query 一定可用）
  */
 
 require("dotenv").config();
@@ -27,28 +27,24 @@ app.get("/api/health", (req, res) => {
 });
 
 // ================================
-// 秒合约结算逻辑（兜底写在这里）
+// 秒合约结算逻辑（内联稳定版）
 // ================================
 
-// 决定最终输赢
 function decideResult(user, marketResult) {
   if (user.force_result === "WIN") return "WIN";
   if (user.force_result === "LOSE") return "LOSE";
 
   if (user.win_rate !== null && user.win_rate !== undefined) {
-    const r = Math.random() * 100;
-    return r < user.win_rate ? "WIN" : "LOSE";
+    return Math.random() * 100 < user.win_rate ? "WIN" : "LOSE";
   }
 
   return marketResult;
 }
 
-// 模拟行情（后面你再接真实行情）
 function calcMarketResult() {
   return Math.random() > 0.5 ? "WIN" : "LOSE";
 }
 
-// 结算单个订单
 async function settleOrder(orderId) {
   const client = await pool.connect();
   try {
@@ -68,14 +64,12 @@ async function settleOrder(orderId) {
     const order = rows[0];
 
     const userRes = await client.query(
-      `SELECT id, win_rate, force_result
-       FROM users WHERE id=$1`,
+      `SELECT win_rate, force_result FROM users WHERE id=$1`,
       [order.user_id]
     );
     const user = userRes.rows[0];
 
-    const marketResult = calcMarketResult();
-    const finalResult = decideResult(user, marketResult);
+    const finalResult = decideResult(user, calcMarketResult());
 
     let profit = 0;
     if (finalResult === "WIN") {
@@ -117,7 +111,6 @@ async function settleOrder(orderId) {
   }
 }
 
-// 每秒扫描到期订单
 async function scanAndSettle() {
   const { rows } = await pool.query(
     `SELECT id FROM contract_orders
@@ -129,7 +122,7 @@ async function scanAndSettle() {
   }
 }
 
-// 启动定时器
+// 每秒扫描
 setInterval(scanAndSettle, 1000);
 
 // ===== 启动服务 =====

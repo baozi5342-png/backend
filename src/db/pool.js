@@ -1,14 +1,19 @@
+/**
+ * backend/src/db/pool.js
+ * PostgreSQL 连接池（标准版）
+ */
+
 const { Pool } = require("pg");
 
-function mustGetEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
+if (!process.env.DATABASE_URL) {
+  throw new Error("❌ Missing env: DATABASE_URL");
 }
 
 const pool = new Pool({
-  connectionString: mustGetEnv("DATABASE_URL"),
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-module.exports = { pool };
+module.exports = pool;
