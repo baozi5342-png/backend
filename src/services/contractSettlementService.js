@@ -1,114 +1,84 @@
-// backend/src/services/contractSettlementService.js
+// src/services/contractSettlementService.js
+// 秒合约结算服务（兜底版，保证后端可启动）
+
 const pool = require("../db/pool");
 
 /**
- * 秒合约结算服务
- * - 扫描已到期的 OPEN 订单
- * - 根据用户风控决定 WIN / LOSE
- * - 返还钱包（本金 + 盈利 或 扣除）
+ * 扫描所有已到期但未结算的合约订单
+ * 简化版本：由后台风控字段直接决定输赢
  */
-async function settleExpiredContracts() {
-  const client = await pool.connect();
-
+async function scanAndSettleContracts() {
   try {
-    // 1️⃣ 找到所有已到期但未结算的订单
-    const { rows: orders } = await client.query(
-      `
-      SELECT o.*, u.win_rate, u.force_result
-      FROM contract_orders o
-      JOIN users u ON u.id = o.user_id
-      WHERE o.status = 'OPEN'
-        AND o.settle_at <= NOW()
-      ORDER BY o.id ASC
+    const now = new Date();
+
+    // 找到已到期、未结算订单
+    const { rows } = await pool.query(`
+      SELECT *
+      FROM contract_orders
+      WHERE status = 'OPEN'
+        AND expire_time <= $1
       LIMIT 50
-      `
-    );
+    `, [now]);
 
-    if (!orders.length) return;
-
-    for (const order of orders) {
-      await client.query("BEGIN");
-
-      const stake = Number(order.stake);
-      const payoutRatio = Number(order.payout_ratio || 0);
-
-      // 2️⃣ 决定输赢（核心逻辑）
-      let result;
-
-      if (order.force_result === "WIN") {
-        result = "WIN";
-      } else if (order.force_result === "LOSE") {
-        result = "LOSE";
-      } else if (order.win_rate !== null) {
-        // 胜率控制（例如 60%）
-        const r = Math.random() * 100;
-        result = r < Number(order.win_rate) ? "WIN" : "LOSE";
-      } else {
-        // 完全随机
-        result = Math.random() < 0.5 ? "WIN" : "LOSE";
-      }
-
-      // 3️⃣ 计算结算金额
-      let profit = 0;
-      let walletDelta = 0;
-
-      if (result === "WIN") {
-        profit = stake * payoutRatio;
-        walletDelta = stake + profit;
-      } else {
-        walletDelta = 0; // 输了，本金不返
-      }
-
-      // 4️⃣ 更新订单
-      await client.query(
-        `
-        UPDATE contract_orders
-        SET status='SETTLED',
-            result=$1,
-            close_price=open_price,
-            settled_at=NOW()
-        WHERE id=$2
-        `,
-        [result, order.id]
-      );
-
-      // 5️⃣ 更新钱包（解冻 + 结算）
-      if (result === "WIN") {
-        await client.query(
-          `
-          UPDATE wallets
-          SET frozen = frozen - $1,
-              balance = balance + $2
-          WHERE user_id=$3 AND currency='USDT'
-          `,
-          [stake, walletDelta, order.user_id]
-        );
-      } else {
-        // 输：只解冻，不返还
-        await client.query(
-          `
-          UPDATE wallets
-          SET frozen = frozen - $1
-          WHERE user_id=$2 AND currency='USDT'
-          `,
-          [stake, order.user_id]
-        );
-      }
-
-      await client.query("COMMIT");
-
-      console.log(
-        `✅ Contract settled | order=${order.id} | user=${order.user_id} | ${result}`
-      );
+    for (const order of rows) {
+      await settleOne(order);
     }
   } catch (err) {
+    console.error("❌ 合约结算扫描失败:", err.message);
+  }
+}
+
+/**
+ * 结算单个订单
+ */
+async function settleOne(order) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 👉 后台可控输赢（admin_force_result）
+    const finalResult = order.admin_force_result || randomResult();
+
+    const win = finalResult === "WIN";
+    const payout = win
+      ? Number(order.stake) * Number(order.payout_ratio)
+      : 0;
+
+    // 更新订单状态
+    await client.query(`
+      UPDATE contract_orders
+      SET status = 'CLOSED',
+          result = $1,
+          settled_at = NOW()
+      WHERE id = $2
+    `, [finalResult, order.id]);
+
+    // 如果赢，返钱
+    if (win) {
+      await client.query(`
+        UPDATE wallets
+        SET balance = balance + $1
+        WHERE user_id = $2
+      `, [payout, order.user_id]);
+    }
+
+    await client.query("COMMIT");
+    console.log(`✅ 订单 ${order.id} 已结算: ${finalResult}`);
+  } catch (err) {
     await client.query("ROLLBACK");
-    console.error("❌ Contract settlement error:", err.message);
+    console.error("❌ 结算订单失败:", err.message);
   } finally {
     client.release();
   }
 }
 
+/**
+ * 随机输赢（兜底）
+ */
+function randomResult() {
+  return Math.random() > 0.5 ? "WIN" : "LOSE";
+}
+
 module.exports = {
-  settleExpiredContracts
+  scanAndSettleContracts
 };
