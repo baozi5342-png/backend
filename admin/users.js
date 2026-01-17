@@ -23,5 +23,17 @@ async function loadUsers() {
     tbody.appendChild(tr);
   });
 }
+<button onclick="banUser(${u.id})">封号</button>
+async function banUser(userId) {
+  await fetch(`${API_BASE}/admin/users/status`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-key": ADMIN_KEY
+    },
+    body: JSON.stringify({ userId, status: "BANNED" })
+  });
+  loadUsers();
+}
 
 loadUsers();
