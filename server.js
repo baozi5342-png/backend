@@ -1,3 +1,4 @@
+const { settleExpiredContracts } = require("./services/contractSettlementService");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -117,3 +118,10 @@ app.listen(PORT, async () => {
   console.log("✅ PostgreSQL connected");
   console.log("✅ Contract settlement loop started");
 });
+// ===== 秒合约结算定时器 =====
+// 每 1 秒扫描一次到期订单
+setInterval(() => {
+  settleExpiredContracts().catch(err => {
+    console.error("Settlement loop error:", err.message);
+  });
+}, 1000);
