@@ -1,52 +1,53 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
+const db = require("../config/db");
 
-// 获取所有市场币种
-router.get('/', async (req, res) => {
+/**
+ * 获取市场币种列表
+ */
+router.get("/", async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM markets WHERE deleted = false');
-    res.status(200).json(result.rows);
+    const { rows } = await db.query(
+      "SELECT id, symbol, name, sort, is_enabled, created_at FROM markets ORDER BY sort DESC, id DESC"
+    );
+    res.json(rows);
   } catch (err) {
-    console.error('Error fetching markets:', err);
-    res.status(500).send({ message: 'Server error' });
+    console.error(err);
+    res.status(500).json({ message: "获取市场币种失败" });
   }
 });
 
-// 新增币种
-router.post('/', async (req, res) => {
-  const { symbol, name } = req.body;
+/**
+ * 启用 / 禁用币种
+ */
+router.post("/toggle", async (req, res) => {
+  const { id, is_enabled } = req.body;
   try {
-    const result = await db.query(
-      'INSERT INTO markets (symbol, name) VALUES ($1, $2) RETURNING *',
-      [symbol, name]
+    await db.query(
+      "UPDATE markets SET is_enabled=$1 WHERE id=$2",
+      [is_enabled, id]
     );
-    res.status(201).json(result.rows[0]);
+    res.json({ success: true });
   } catch (err) {
-    console.error('Error adding market:', err);
-    res.status(500).send({ message: 'Error adding market' });
+    console.error(err);
+    res.status(500).json({ message: "操作失败" });
   }
 });
 
-// 启用/停用市场币种
-router.put('/:id/toggle', async (req, res) => {
-  const { id } = req.params;
-  const { enabled } = req.body;
-
+/**
+ * 修改排序
+ */
+router.post("/sort", async (req, res) => {
+  const { id, sort } = req.body;
   try {
-    const result = await db.query(
-      'UPDATE markets SET enabled = $1 WHERE id = $2 RETURNING *',
-      [enabled, id]
+    await db.query(
+      "UPDATE markets SET sort=$1 WHERE id=$2",
+      [sort, id]
     );
-
-    if (result.rows.length > 0) {
-      res.status(200).json({ message: 'Market status updated successfully' });
-    } else {
-      res.status(404).json({ message: 'Market not found' });
-    }
+    res.json({ success: true });
   } catch (err) {
-    console.error('Error updating market status:', err);
-    res.status(500).send({ message: 'Error updating market status' });
+    console.error(err);
+    res.status(500).json({ message: "排序修改失败" });
   }
 });
 
