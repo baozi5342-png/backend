@@ -67,7 +67,8 @@ async function login(){
 
   if(data.success){
     localStorage.setItem("admin_token", data.token);
-    location.href = "/admin";
+    location.href = "/admin/index.html";
+
   }else{
     document.getElementById("err").innerText = "登录失败";
   }
