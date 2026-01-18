@@ -1,185 +1,200 @@
-// backend/src/routes/admin.js
 const express = require("express");
 const router = express.Router();
-const pool = require("../db/pool");
+const db = require("../db/pool");
 
+/* =========================
+   Admin Token 权限中间件
+========================= */
 function requireAdmin(req, res, next) {
-  const key = req.headers["x-admin-key"];
-  if (!process.env.ADMIN_API_KEY || key !== process.env.ADMIN_API_KEY) {
-    return res.status(401).json({ message: "Unauthorized" });
+  const need = String(process.env.ADMIN_TOKEN || "").trim();
+  if (!need) return next(); // 未设置则放行（方便开发）
+
+  const got =
+    String(req.headers["x-admin-token"] || "").trim() ||
+    String(req.query.token || "").trim();
+
+  if (!got || got !== need) {
+    return res.status(401).json({ ok: false, message: "未授权（Admin Token 错误）" });
   }
   next();
 }
 
 router.use(requireAdmin);
 
-// ===== coins =====
-router.get("/coins", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM coins ORDER BY symbol ASC");
-  res.json(rows);
+const ok = (res, data) => res.json({ ok: true, data });
+const bad = (res, msg, code = 400) =>
+  res.status(code).json({ ok: false, message: msg });
+
+/* =========================
+   1️⃣ 秒合约产品管理
+========================= */
+
+// 获取全部产品
+router.get("/seconds/products", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT * FROM seconds_products ORDER BY id DESC"
+    );
+    ok(res, rows);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
 });
 
-router.post("/coins", async (req, res) => {
-  const { symbol, name, icon, category, current_price, price_change } = req.body;
-  if (!symbol || !name) return res.status(400).json({ message: "symbol/name required" });
+// 新增产品
+router.post("/seconds/products", async (req, res) => {
+  try {
+    const {
+      symbol,
+      title,
+      min_amount = 10,
+      max_amount = 10000,
+      payout_rate = 0.85,
+      durations = [30, 60, 120],
+      is_active = true,
+    } = req.body;
 
-  await pool.query(
-    `INSERT INTO coins(symbol,name,icon,category,current_price,price_change)
-     VALUES($1,$2,$3,$4,$5,$6)
-     ON CONFLICT(symbol) DO UPDATE SET
-       name=EXCLUDED.name,
-       icon=EXCLUDED.icon,
-       category=EXCLUDED.category,
-       current_price=EXCLUDED.current_price,
-       price_change=EXCLUDED.price_change`,
-    [symbol, name, icon || "", category || "Crypto", Number(current_price || 0), Number(price_change || 0)]
-  );
+    if (!symbol || !title) return bad(res, "symbol / title 不能为空");
 
-  res.json({ ok: true });
+    const { rows } = await db.query(
+      `
+      INSERT INTO seconds_products
+      (symbol, title, min_amount, max_amount, payout_rate, durations, is_active)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING *
+      `,
+      [
+        String(symbol).toUpperCase(),
+        title,
+        Number(min_amount),
+        Number(max_amount),
+        Number(payout_rate),
+        durations,
+        Boolean(is_active),
+      ]
+    );
+
+    ok(res, rows[0]);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
 });
 
-router.put("/coins/:symbol", async (req, res) => {
-  const sym = req.params.symbol;
-  const { symbol, name, icon, category, current_price, price_change } = req.body;
+// 更新产品
+router.put("/seconds/products/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const {
+      symbol,
+      title,
+      min_amount,
+      max_amount,
+      payout_rate,
+      durations,
+      is_active,
+    } = req.body;
 
-  await pool.query(
-    `UPDATE coins
-     SET symbol=$1, name=$2, icon=$3, category=$4, current_price=$5, price_change=$6
-     WHERE symbol=$7`,
-    [symbol || sym, name || "", icon || "", category || "Crypto", Number(current_price || 0), Number(price_change || 0), sym]
-  );
-  res.json({ ok: true });
+    const { rows } = await db.query(
+      `
+      UPDATE seconds_products
+      SET symbol = COALESCE($1, symbol),
+          title = COALESCE($2, title),
+          min_amount = COALESCE($3, min_amount),
+          max_amount = COALESCE($4, max_amount),
+          payout_rate = COALESCE($5, payout_rate),
+          durations = COALESCE($6, durations),
+          is_active = COALESCE($7, is_active),
+          updated_at = NOW()
+      WHERE id = $8
+      RETURNING *
+      `,
+      [
+        symbol ? String(symbol).toUpperCase() : null,
+        title ?? null,
+        min_amount ?? null,
+        max_amount ?? null,
+        payout_rate ?? null,
+        durations ?? null,
+        is_active ?? null,
+        id,
+      ]
+    );
+
+    if (!rows[0]) return bad(res, "产品不存在", 404);
+    ok(res, rows[0]);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
 });
 
-router.delete("/coins/:symbol", async (req, res) => {
-  await pool.query(`DELETE FROM coins WHERE symbol=$1`, [req.params.symbol]);
-  res.json({ ok: true });
+/* =========================
+   2️⃣ 订单管理（高级筛选）
+========================= */
+
+// GET /admin/seconds/orders?uid=&status=&symbol=&from=&to=
+router.get("/seconds/orders", async (req, res) => {
+  try {
+    const { uid, status, symbol, from, to } = req.query;
+    const where = [];
+    const params = [];
+
+    if (uid) {
+      params.push(uid);
+      where.push(`uid = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      where.push(`status = $${params.length}`);
+    }
+    if (symbol) {
+      params.push(symbol.toUpperCase());
+      where.push(`symbol = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      where.push(`created_at >= $${params.length}::timestamp`);
+    }
+    if (to) {
+      params.push(to);
+      where.push(`created_at <= $${params.length}::timestamp`);
+    }
+
+    const sql =
+      `SELECT * FROM seconds_orders` +
+      (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
+      ` ORDER BY id DESC LIMIT 200`;
+
+    const { rows } = await db.query(sql, params);
+    ok(res, rows);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
 });
 
-// ===== contract products =====
-router.get("/contract-products", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM contract_products ORDER BY id DESC");
-  res.json(rows);
-});
-
-router.post("/contract-products", async (req, res) => {
-  const { name, seconds, payout_ratio, min_amount, max_amount, status } = req.body;
-  if (!name || !seconds) return res.status(400).json({ message: "name/seconds required" });
-
-  const { rows } = await pool.query(
-    `INSERT INTO contract_products(name,seconds,payout_ratio,min_amount,max_amount,status)
-     VALUES($1,$2,$3,$4,$5,$6)
-     RETURNING id`,
-    [
-      name,
-      Number(seconds),
-      Number(payout_ratio || 0),
-      Number(min_amount || 0),
-      Number(max_amount || 0),
-      status || "ACTIVE"
-    ]
-  );
-
-  res.json({ ok: true, id: rows[0].id });
-});
-
-router.put("/contract-products/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const { name, seconds, payout_ratio, min_amount, max_amount, status } = req.body;
-
-  await pool.query(
-    `UPDATE contract_products
-     SET name=$1, seconds=$2, payout_ratio=$3, min_amount=$4, max_amount=$5, status=$6
-     WHERE id=$7`,
-    [
-      name,
-      Number(seconds),
-      Number(payout_ratio || 0),
-      Number(min_amount || 0),
-      Number(max_amount || 0),
-      status || "ACTIVE",
-      id
-    ]
-  );
-
-  res.json({ ok: true });
-});
-
-router.delete("/contract-products/:id", async (req, res) => {
-  await pool.query("DELETE FROM contract_products WHERE id=$1", [Number(req.params.id)]);
-  res.json({ ok: true });
-});
-
-// ===== users risk =====
-router.get("/users", async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT id, status, win_rate, force_result
-     FROM users
-     ORDER BY id DESC
-     LIMIT 200`
-  );
-  res.json(rows);
-});
-
-router.put("/users/:id/risk", async (req, res) => {
-  const id = req.params.id;
-  const { status, win_rate, force_result } = req.body;
-
-  await pool.query(
-    `UPDATE users
-     SET status=$1,
-         win_rate=$2,
-         force_result=$3
-     WHERE id=$4`,
-    [
-      status || "ACTIVE",
-      win_rate === null || win_rate === undefined ? null : Number(win_rate),
-      force_result || null,
-      id
-    ]
-  );
-
-  res.json({ ok: true });
-});
-// ==============================
-// 强制结算订单（强制赢 / 强制输）
-// ==============================
-// POST /admin/seconds/orders/:id/force
-// body: { result: "WIN" | "LOSE" }
+/* =========================
+   3️⃣ 强制赢 / 强制输
+========================= */
 
 router.post("/seconds/orders/:id/force", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { result } = req.body;
 
-    if (!["WIN", "LOSE"].includes(result)) {
-      return res.status(400).json({ ok: false, message: "result 必须是 WIN 或 LOSE" });
-    }
+    if (!["WIN", "LOSE"].includes(result))
+      return bad(res, "result 必须是 WIN 或 LOSE");
 
-    // 读取订单
     const { rows } = await db.query(
-      `SELECT * FROM seconds_orders WHERE id=$1`,
+      "SELECT * FROM seconds_orders WHERE id=$1",
       [id]
     );
     const order = rows[0];
-    if (!order) {
-      return res.status(404).json({ ok: false, message: "订单不存在" });
-    }
-
-    if (order.status !== "OPEN") {
-      return res.status(400).json({ ok: false, message: "订单已结算，无法强制操作" });
-    }
-
-    // 当前价格：用 entry_price 做 exit_price（后台强制不依赖行情）
-    const exitPrice = Number(order.entry_price);
+    if (!order) return bad(res, "订单不存在", 404);
+    if (order.status !== "OPEN")
+      return bad(res, "订单已结算，不能操作");
 
     const amount = Number(order.amount);
     const payout = Number(order.payout_rate || 0.85);
-
-    const pnl =
-      result === "WIN"
-        ? amount * payout
-        : -amount;
+    const pnl = result === "WIN" ? amount * payout : -amount;
 
     await db.query(
       `
@@ -187,50 +202,94 @@ router.post("/seconds/orders/:id/force", async (req, res) => {
       SET status='SETTLED',
           result=$1,
           pnl=$2,
-          exit_price=$3,
+          exit_price=entry_price,
           settled_at=NOW()
-      WHERE id=$4 AND status='OPEN'
+      WHERE id=$3
       `,
-      [result, pnl, exitPrice, id]
+      [result, pnl, id]
     );
 
-    return res.json({ ok: true });
+    ok(res, true);
   } catch (e) {
-    console.error("[force settle error]", e.message);
-    return res.status(500).json({ ok: false, message: e.message });
+    bad(res, e.message, 500);
   }
 });
-tr.innerHTML = `
-  <td>${o.id}</td>
-  <td>${o.uid}</td>
-  <td>${o.symbol}</td>
-  <td>${o.direction === "UP" ? "买涨" : "买跌"}</td>
-  <td>${o.amount}</td>
-  <td>${o.status}</td>
-  <td>${o.result || ""}</td>
-  <td>${o.pnl || ""}</td>
-  <td>
-    ${
-      o.status === "OPEN"
-        ? `
-          <button class="enable" onclick="forceSettle(${o.id}, 'WIN')">强制赢</button>
-          <button class="disable" onclick="forceSettle(${o.id}, 'LOSE')">强制输</button>
-        `
-        : "-"
-    }
-  </td>
-`;
-async function forceSettle(id, result) {
-  if (!confirm(`确认要【强制${result === "WIN" ? "赢" : "输"}】该订单吗？`)) return;
 
-  await fetch(API + "/admin/seconds/orders/" + id + "/force", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ result })
-  });
+/* =========================
+   4️⃣ 风控设置
+========================= */
 
-  alert("操作成功");
-  loadOrders();
-}
+router.get("/risk", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT * FROM risk_settings WHERE id=1"
+    );
+    ok(res, rows[0] || {});
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
+});
+
+router.put("/risk", async (req, res) => {
+  try {
+    const {
+      is_trade_enabled,
+      max_amount_per_order,
+      max_orders_per_user_per_day,
+      force_loss_prob,
+    } = req.body;
+
+    await db.query(
+      `INSERT INTO risk_settings (id) VALUES (1)
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    const { rows } = await db.query(
+      `
+      UPDATE risk_settings
+      SET is_trade_enabled=$1,
+          max_amount_per_order=$2,
+          max_orders_per_user_per_day=$3,
+          force_loss_prob=$4,
+          updated_at=NOW()
+      WHERE id=1
+      RETURNING *
+      `,
+      [
+        Boolean(is_trade_enabled),
+        Number(max_amount_per_order),
+        Number(max_orders_per_user_per_day),
+        Number(force_loss_prob),
+      ]
+    );
+
+    ok(res, rows[0]);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
+});
+
+/* =========================
+   5️⃣ 今日统计
+========================= */
+
+router.get("/stats/today", async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT
+        COUNT(*)::int AS total_orders,
+        COUNT(*) FILTER (WHERE status='OPEN')::int AS open_orders,
+        COUNT(*) FILTER (WHERE status='SETTLED')::int AS settled_orders,
+        COUNT(*) FILTER (WHERE result='WIN')::int AS win_orders,
+        COUNT(*) FILTER (WHERE result='LOSE')::int AS lose_orders,
+        COALESCE(SUM(pnl) FILTER (WHERE status='SETTLED'), 0) AS total_pnl
+      FROM seconds_orders
+      WHERE created_at::date = NOW()::date
+    `);
+    ok(res, rows[0]);
+  } catch (e) {
+    bad(res, e.message, 500);
+  }
+});
 
 module.exports = router;
