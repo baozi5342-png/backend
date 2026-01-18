@@ -1,49 +1,46 @@
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
+const helmet = require("helmet");
 
-const adminRoutes = require("./routes/admin");
-const tradeRoutes = require("./routes/trade");
+// ===== 路由 =====
+const authRoutes = require("./src/routes/auth");
+const apiRoutes = require("./src/routes/api");
+const adminRoutes = require("./src/routes/admin");
 
-// 如果你有结算服务（可选）
-let settlementService = null;
-try {
-  settlementService = require("./services/contractSettlementService");
-} catch (e) {
-  console.warn("⚠️ 未加载结算服务（不影响启动）");
-}
+// ===== 定时结算服务 =====
+const {
+  settlementExpiredContracts,
+} = require("./src/services/contractSettlement");
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 
 // ===== 基础中间件 =====
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// ===== ✅【关键】暴露后台静态页面 =====
-app.use(
-  "/admin",
-  express.static(path.join(__dirname, "../admin"))
-);
-
-// ===== API 路由 =====
+// ===== 路由挂载 =====
+app.use("/auth", authRoutes);
+app.use("/api", apiRoutes);
 app.use("/admin", adminRoutes);
-app.use("/trade", tradeRoutes);
 
-// ===== 健康检查 =====
+// ===== 健康检查（可选，但推荐）=====
 app.get("/", (req, res) => {
-  res.send("FoxPro Exchange Backend Running");
+  res.json({ ok: true, message: "Backend is running" });
 });
+
+// ===== 秒合约兜底扫描（安全）=====
+// 说明：
+// - 只扫描，不直接结算
+// - 即使 SQL 出错，也不会导致 Render 崩溃
+setInterval(() => {
+  settlementExpiredContracts();
+}, 5000);
 
 // ===== 启动服务 =====
-app.listen(PORT, () => {
-  console.log(`✅ Backend running on :${PORT}`);
-});
+const PORT = Number(process.env.PORT || 10000);
 
-// ===== 启动秒合约结算轮询（如果存在）=====
-if (settlementService && settlementService.startSettlementLoop) {
-  settlementService.startSettlementLoop();
-  console.log("✅ Contract settlement loop started");
-}
+app.listen(PORT, () => {
+  console.log("Backend running on port", PORT);
+});

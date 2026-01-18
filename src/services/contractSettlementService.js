@@ -1,55 +1,42 @@
-const pool = require('../db/pool');
+const db = require("../db/pool");
 
 /**
- * 扫描并结算到期合约
+ * 安全版：扫描已过期但仍是 OPEN 状态的秒合约订单
+ * 说明：
+ * 1️⃣ 不使用任何不存在的字段（避免 42703）
+ * 2️⃣ 只依赖 created_at + duration
+ * 3️⃣ 出错只打印日志，不会导致 Render 崩溃
  */
 async function settlementExpiredContracts() {
-  const client = await pool.connect();
-
   try {
-    const { rows } = await client.query(`
-      SELECT *
-      FROM contract_orders
+    const { rows } = await db.query(`
+      SELECT id, uid, symbol, direction, amount, duration, entry_price, created_at
+      FROM seconds_orders
       WHERE status = 'OPEN'
-        AND expire_at <= NOW()
+        AND (created_at + (duration || ' seconds')::interval) <= NOW()
+      ORDER BY created_at ASC
       LIMIT 20
     `);
 
+    if (!rows.length) return;
+
     for (const order of rows) {
-      await settleOne(client, order);
+      // ⚠️ 这里只是兜底扫描，不做真正结算
+      // 真正结算仍然走：POST /api/seconds/orders/:id/settle
+      console.log(
+        "[contractSettlement] expired order detected:",
+        order.id
+      );
     }
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * 单笔结算
- */
-async function settleOne(client, order) {
-  const win = Math.random() > 0.5;
-  const result = win ? 'WIN' : 'LOSE';
-  const profit = win ? order.amount * order.odds : 0;
-
-  await client.query(
-    `UPDATE contract_orders
-     SET status = 'SETTLED',
-         result = $1,
-         profit = $2
-     WHERE id = $3`,
-    [result, profit, order.id]
-  );
-
-  if (win) {
-    await client.query(
-      `UPDATE wallets
-       SET balance = balance + $1
-       WHERE user_id = $2`,
-      [order.amount + profit, order.user_id]
+  } catch (err) {
+    // ❗关键：不抛异常，防止 Render 判定服务崩溃
+    console.error(
+      "[contractSettlement ERROR]",
+      err.message
     );
   }
 }
 
 module.exports = {
-  settlementExpiredContracts
+  settlementExpiredContracts,
 };
