@@ -15,7 +15,7 @@ router.get("/hot", async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    console.error("HOT COINS ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: "Failed to load market data" });
   }
 });
