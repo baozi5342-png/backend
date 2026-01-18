@@ -1,31 +1,49 @@
-const axios = require("axios");
+const { setPrice } = require("./priceCache");
 
-let last = { symbol: (process.env.MARKET_SYMBOL || "BTCUSDT").toUpperCase(), price: null, updatedAt: null };
+// 你需要支持哪些币就写哪些
+const SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 
-function getSymbol() {
-  return (process.env.MARKET_SYMBOL || "BTCUSDT").toUpperCase();
+// Node 18+ 自带 fetch（Render 通常是 18/20）
+async function fetchPrice(symbol) {
+  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+  const r = await fetch(url, { method: "GET" });
+  if (!r.ok) throw new Error(`binance http ${r.status}`);
+  const j = await r.json();
+  return Number(j.price);
 }
 
-async function fetchPriceOnce() {
-  const symbol = getSymbol();
-  const url = "https://api.binance.com/api/v3/ticker/price";
-  const res = await axios.get(url, { params: { symbol }, timeout: 8000 });
-  const price = Number(res.data.price);
-  if (!Number.isFinite(price)) throw new Error("Invalid price");
-  last = { symbol, price, updatedAt: new Date().toISOString() };
-  return last;
+let started = false;
+
+function startBinancePolling() {
+  if (started) return;
+  started = true;
+
+  // 立刻拉一次
+  (async () => {
+    for (const s of SYMBOLS) {
+      try {
+        const p = await fetchPrice(s);
+        setPrice(s, p);
+      } catch (e) {
+        console.error("[market init]", s, e.message);
+      }
+    }
+  })();
+
+  // 每秒轮询
+  setInterval(async () => {
+    for (const s of SYMBOLS) {
+      try {
+        const p = await fetchPrice(s);
+        setPrice(s, p);
+      } catch (e) {
+        // 不要 throw，避免影响服务
+        console.error("[market]", s, e.message);
+      }
+    }
+  }, 1000);
+
+  console.log("[market] Binance polling started:", SYMBOLS.join(","));
 }
 
-function getLast() {
-  // 如果你后面要多币种，这里会扩展成 map
-  return last;
-}
-
-function startPolling() {
-  const ms = Number(process.env.PRICE_POLL_MS || 1000);
-  const run = async () => { try { await fetchPriceOnce(); } catch {} };
-  run();
-  setInterval(run, ms);
-}
-
-module.exports = { startPolling, fetchPriceOnce, getLast };
+module.exports = { startBinancePolling };

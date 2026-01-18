@@ -141,5 +141,96 @@ router.put("/users/:id/risk", async (req, res) => {
 
   res.json({ ok: true });
 });
+// ==============================
+// 强制结算订单（强制赢 / 强制输）
+// ==============================
+// POST /admin/seconds/orders/:id/force
+// body: { result: "WIN" | "LOSE" }
+
+router.post("/seconds/orders/:id/force", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { result } = req.body;
+
+    if (!["WIN", "LOSE"].includes(result)) {
+      return res.status(400).json({ ok: false, message: "result 必须是 WIN 或 LOSE" });
+    }
+
+    // 读取订单
+    const { rows } = await db.query(
+      `SELECT * FROM seconds_orders WHERE id=$1`,
+      [id]
+    );
+    const order = rows[0];
+    if (!order) {
+      return res.status(404).json({ ok: false, message: "订单不存在" });
+    }
+
+    if (order.status !== "OPEN") {
+      return res.status(400).json({ ok: false, message: "订单已结算，无法强制操作" });
+    }
+
+    // 当前价格：用 entry_price 做 exit_price（后台强制不依赖行情）
+    const exitPrice = Number(order.entry_price);
+
+    const amount = Number(order.amount);
+    const payout = Number(order.payout_rate || 0.85);
+
+    const pnl =
+      result === "WIN"
+        ? amount * payout
+        : -amount;
+
+    await db.query(
+      `
+      UPDATE seconds_orders
+      SET status='SETTLED',
+          result=$1,
+          pnl=$2,
+          exit_price=$3,
+          settled_at=NOW()
+      WHERE id=$4 AND status='OPEN'
+      `,
+      [result, pnl, exitPrice, id]
+    );
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[force settle error]", e.message);
+    return res.status(500).json({ ok: false, message: e.message });
+  }
+});
+tr.innerHTML = `
+  <td>${o.id}</td>
+  <td>${o.uid}</td>
+  <td>${o.symbol}</td>
+  <td>${o.direction === "UP" ? "买涨" : "买跌"}</td>
+  <td>${o.amount}</td>
+  <td>${o.status}</td>
+  <td>${o.result || ""}</td>
+  <td>${o.pnl || ""}</td>
+  <td>
+    ${
+      o.status === "OPEN"
+        ? `
+          <button class="enable" onclick="forceSettle(${o.id}, 'WIN')">强制赢</button>
+          <button class="disable" onclick="forceSettle(${o.id}, 'LOSE')">强制输</button>
+        `
+        : "-"
+    }
+  </td>
+`;
+async function forceSettle(id, result) {
+  if (!confirm(`确认要【强制${result === "WIN" ? "赢" : "输"}】该订单吗？`)) return;
+
+  await fetch(API + "/admin/seconds/orders/" + id + "/force", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ result })
+  });
+
+  alert("操作成功");
+  loadOrders();
+}
 
 module.exports = router;

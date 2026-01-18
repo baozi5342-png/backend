@@ -120,5 +120,17 @@ router.post("/kyc/basic", auth, async (req, res) => {
 router.post("/kyc/advanced", auth, async (req, res) => {
   res.json({ ok: true });
 });
+const { getSnapshot } = require("../services/priceCache");
+
+// 获取最新价（前端只请求你自己的后端）
+router.get("/market/price", async (req, res) => {
+  try {
+    const symbol = String(req.query.symbol || "BTCUSDT").toUpperCase();
+    const snap = getSnapshot(symbol);
+    return res.json({ ok: true, data: { symbol, price: snap.price, ts: snap.ts } });
+  } catch (e) {
+    return res.status(500).json({ ok: false, message: e.message });
+  }
+});
 
 module.exports = router;
