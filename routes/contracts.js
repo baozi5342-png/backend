@@ -1,17 +1,16 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config/db")
-;
+const db = require("../config/db");
 
 /* 产品列表 */
 router.get("/", async (req, res) => {
-  const result = await db.query(
+  const { rows } = await db.query(
     "SELECT * FROM contract_products ORDER BY id DESC"
   );
-  res.json(result.rows);
+  res.json(rows);
 });
 
-/* 修改产品 */
+/* 修改产品（盈利率 + 启停） */
 router.post("/update", async (req, res) => {
   const { id, profit_rate, is_disabled } = req.body;
 

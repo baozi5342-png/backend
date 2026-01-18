@@ -1,14 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config/db")
-;
+const db = require("../config/db");
 
 /* 用户列表 */
 router.get("/", async (req, res) => {
-  const result = await db.query(
-    "SELECT id, email, balance, is_disabled FROM users ORDER BY id DESC"
+  const { rows } = await db.query(
+    "SELECT id, email, balance, is_disabled, created_at FROM users ORDER BY id DESC"
   );
-  res.json(result.rows);
+  res.json(rows);
 });
 
 /* 冻结 / 解冻 */
@@ -16,7 +15,7 @@ router.post("/toggle", async (req, res) => {
   const { id, is_disabled } = req.body;
 
   await db.query(
-    "UPDATE users SET is_disabled = $1 WHERE id = $2",
+    "UPDATE users SET is_disabled=$1 WHERE id=$2",
     [is_disabled, id]
   );
 

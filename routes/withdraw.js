@@ -1,14 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config/db")
-;
+const db = require("../config/db");
 
 /* 提现列表 */
 router.get("/", async (req, res) => {
-  const result = await db.query(
+  const { rows } = await db.query(
     "SELECT * FROM withdraw_requests ORDER BY id DESC"
   );
-  res.json(result.rows);
+  res.json(rows);
 });
 
 /* 审核 */

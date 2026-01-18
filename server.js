@@ -3,23 +3,23 @@ const cors = require("cors");
 const path = require("path");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
+/* 健康检查 */
 app.get("/", (req, res) => {
   res.send("API running");
 });
 
-/* 你的API路由 */
+/* API 路由 */
 app.use("/api/coins", require("./routes/coins"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/contracts", require("./routes/contracts"));
 app.use("/api/withdraw", require("./routes/withdraw"));
 
-/* ✅ 后台可视化页面（静态站点） */
+/* 后台页面 */
 app.use("/admin", express.static(path.join(__dirname, "admin")));
-
-/* 直接访问 /admin 自动打开 index.html */
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "admin", "index.html"));
 });
