@@ -1,3 +1,9 @@
+// 未登录跳转登录页
+const token = localStorage.getItem("admin_token");
+if (!token) {
+  location.href = "/admin/login.html";
+}
+
 (() => {
   // ✅ 自动识别 API Base（本地 http://localhost:3000 或 Render 域名）
   const API_BASE = location.origin; // 同域：你访问哪，就用哪的 /api
@@ -28,8 +34,10 @@
 
   async function apiFetch(path, options = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
-      ...options,
+      headers: {
+  "Content-Type": "application/json",
+  "x-admin-token": token
+}
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
