@@ -37,6 +37,25 @@ async function settlementExpiredContracts() {
       const amount = Number(o.amount);
       const pnl = isWin ? amount * payout : -amount;
 
+    // ================================
+// 【新增】用户级风控（只读接入，带开关）
+// 默认关闭，不影响原有结算逻辑
+// ================================
+const ENABLE_USER_RISK =
+  String(process.env.ENABLE_USER_RISK || "").toLowerCase() === "true";
+
+let forcedResult = null;
+
+if (ENABLE_USER_RISK) {
+  // 只在开启时才读取用户风控字段
+  if (o.risk_mode === "FORCE_WIN") {
+    forcedResult = "WIN";
+  } else if (o.risk_mode === "FORCE_LOSE") {
+    forcedResult = "LOSE";
+  }
+}
+// ================================
+  
       // 只要订单还是 OPEN 就更新，避免重复结算
       await db.query(
         `
