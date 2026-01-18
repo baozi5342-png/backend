@@ -1,24 +1,25 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
+const db = require("../db");
 
-// 获取所有用户
-router.get('/', async (req, res) => {
-  const result = await db.query('SELECT * FROM users WHERE deleted = false');
-  res.status(200).json(result.rows);
+/* 用户列表 */
+router.get("/", async (req, res) => {
+  const result = await db.query(
+    "SELECT id, email, balance, is_disabled FROM users ORDER BY id DESC"
+  );
+  res.json(result.rows);
 });
 
-// 修改用户密码
-router.put('/:id/reset-password', async (req, res) => {
-  const { id } = req.params;
-  const { newPassword } = req.body;
-  const result = await db.query('UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING *', [newPassword, id]);
+/* 冻结 / 解冻 */
+router.post("/toggle", async (req, res) => {
+  const { id, is_disabled } = req.body;
 
-  if (result.rows.length > 0) {
-    res.status(200).json({ message: 'Password reset successfully' });
-  } else {
-    res.status(400).json({ message: 'User not found' });
-  }
+  await db.query(
+    "UPDATE users SET is_disabled = $1 WHERE id = $2",
+    [is_disabled, id]
+  );
+
+  res.json({ success: true });
 });
 
 module.exports = router;

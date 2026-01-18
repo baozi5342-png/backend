@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>后台管理系统</title>
+  <link rel="stylesheet" href="./admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">FX</div>
+      <div>
+        <div class="title">后台管理系统</div>
+        <div class="sub">数据库可视化管理 · 修改即生效</div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="pill" id="apiBasePill"></div>
+      <button class="btn" id="btnRefresh">刷新数据</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <aside class="sidebar">
+      <button class="nav active" data-tab="coins">币种管理</button>
+      <button class="nav" data-tab="users">用户管理</button>
+      <button class="nav" data-tab="contracts">秒合约产品</button>
+      <button class="nav" data-tab="withdraw">提现审核</button>
+
+      <div class="hint">
+        <div class="hint-title">操作说明</div>
+        <div class="hint-text">
+          1）点击按钮会直接修改数据库<br/>
+          2）数据库变更后前端刷新即可同步<br/>
+          3）本后台不涉及风控逻辑，仅做数据管理
+        </div>
+      </div>
+    </aside>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="panelTitle">币种管理</h2>
+        <div class="tools">
+          <input id="searchInput" class="input" placeholder="搜索（支持模糊）" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table">
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </section>
+  </main>
+
+  <script src="./admin.js"></script>
+</body>
+</html>

@@ -1,23 +1,30 @@
-const express = require('express');
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+
 const app = express();
-const port = process.env.PORT || 10000;
-const db = require('./config/db');
-
-// 引入路由
-const authRoutes = require('./routes/auth');
-const usersRoutes = require('./routes/users');
-const contractsRoutes = require('./routes/contracts');
-const marketsRoutes = require('./routes/markets');
-
-// 中间件
+app.use(cors());
 app.use(express.json());
 
-// 路由配置
-app.use('/api/auth', authRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/contracts', contractsRoutes);
-app.use('/api/markets', marketsRoutes);
+app.get("/", (req, res) => {
+  res.send("API running");
+});
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+/* 你的API路由 */
+app.use("/api/coins", require("./routes/coins"));
+app.use("/api/users", require("./routes/users"));
+app.use("/api/contracts", require("./routes/contracts"));
+app.use("/api/withdraw", require("./routes/withdraw"));
+
+/* ✅ 后台可视化页面（静态站点） */
+app.use("/admin", express.static(path.join(__dirname, "admin")));
+
+/* 直接访问 /admin 自动打开 index.html */
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "index.html"));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
 });
