@@ -1,17 +1,17 @@
-const express = require('express');
-const router = express.Router();
-const db = require('../config/db');
-
-// 登录接口（简单示范）
-router.post('/login', async (req, res) => {
-  const { uid, password } = req.body;
-
-  const result = await db.query('SELECT * FROM users WHERE uid = $1 AND password_hash = $2', [uid, password]);
-  if (result.rows.length > 0) {
-    res.status(200).send({ message: 'Login successful' });
-  } else {
-    res.status(401).send({ message: 'Invalid credentials' });
+module.exports = function (req, res, next) {
+  // ✅ 放行首页/市场行情接口（不需要登录）
+  if (
+    req.path.startsWith("/api/coins") ||
+    req.path.startsWith("/coins")
+  ) {
+    return next();
   }
-});
 
-module.exports = router;
+  // ⛔ 下面才是需要登录的接口
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ message: "未登录" });
+  }
+
+  next();
+};
