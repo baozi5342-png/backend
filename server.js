@@ -40,3 +40,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+// 访问 /admin 或 /admin/ 时，返回后台首页
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "index.html"));
+});
