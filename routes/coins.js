@@ -1,3 +1,11 @@
+const express = require("express");
+const router = express.Router();
+const db = require("../config/db");
+
+/**
+ * 获取热门币种（不需要登录）
+ * GET /api/coins/hot
+ */
 router.get("/hot", async (req, res) => {
   try {
     const result = await db.query(`
@@ -15,7 +23,9 @@ router.get("/hot", async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    console.error("HOT COINS ERROR:", err);
     res.status(500).json({ message: "Failed to load market data" });
   }
 });
+
+module.exports = router;
