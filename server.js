@@ -45,4 +45,14 @@ app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "admin", "index.html"));
 });
 const coinsRouter = require("./routes/coins");
+const usersRouter = require("./routes/users");
+const authMiddleware = require("./routes/auth");
+
+// ✅ 1. 公共接口（不需要登录）
 app.use("/api/coins", coinsRouter);
+
+// ✅ 2. 登录校验（从这里开始才需要）
+app.use(authMiddleware);
+
+// ✅ 3. 私有接口
+app.use("/api/users", usersRouter);
