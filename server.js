@@ -1,45 +1,49 @@
-const express = require('express');
-const cors = require('cors');
-const pool = require('./src/db/pool');
+require("dotenv").config();
 
-const {
-  settlementExpiredContracts
-} = require('./src/services/contractSettlementService');
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+
+const adminRoutes = require("./routes/admin");
+const tradeRoutes = require("./routes/trade");
+
+// 如果你有结算服务（可选）
+let settlementService = null;
+try {
+  settlementService = require("./services/contractSettlementService");
+} catch (e) {
+  console.warn("⚠️ 未加载结算服务（不影响启动）");
+}
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+// ===== 基础中间件 =====
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
+// ===== ✅【关键】暴露后台静态页面 =====
+app.use(
+  "/admin",
+  express.static(path.join(__dirname, "../admin"))
+);
 
-/** 健康检查 */
-app.get('/', (req, res) => {
-  res.send('Backend is running');
+// ===== API 路由 =====
+app.use("/admin", adminRoutes);
+app.use("/trade", tradeRoutes);
+
+// ===== 健康检查 =====
+app.get("/", (req, res) => {
+  res.send("FoxPro Exchange Backend Running");
 });
 
-/** 示例接口 */
-app.get('/api/ping', (req, res) => {
-  res.json({ ok: true });
+// ===== 启动服务 =====
+app.listen(PORT, () => {
+  console.log(`✅ Backend running on :${PORT}`);
 });
 
-/** 启动服务器 */
-app.listen(PORT, async () => {
-  console.log(`Backend running on :${PORT}`);
-
-  try {
-    await pool.query('select 1');
-    console.log('PostgreSQL connected');
-  } catch (err) {
-    console.error('PostgreSQL connection failed', err);
-    process.exit(1);
-  }
-
-  console.log('Contract settlement loop started');
-
-  /** 每 5 秒扫描一次到期合约 */
-  setInterval(() => {
-    settlementExpiredContracts().catch(err => {
-      console.error('Settlement error:', err);
-    });
-  }, 5000);
-});
+// ===== 启动秒合约结算轮询（如果存在）=====
+if (settlementService && settlementService.startSettlementLoop) {
+  settlementService.startSettlementLoop();
+  console.log("✅ Contract settlement loop started");
+}

@@ -1,25 +1,201 @@
-<!DOCTYPE html>
-<html lang="zh">
+<!doctype html>
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <title>Admin · Users</title>
-  <link rel="stylesheet" href="admin.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>后台管理 - 秒合约 / 风控</title>
+  <link rel="stylesheet" href="./admin.css" />
 </head>
 <body>
-  <h1>用户管理</h1>
+  <div class="layout">
+    <!-- 左侧栏 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">F</div>
+        <div class="brand-text">
+          <div class="brand-title">FoxPro 后台</div>
+          <div class="brand-sub">秒合约 / 风控</div>
+        </div>
+      </div>
 
-  <table id="usersTable">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>用户名</th>
-        <th>Email</th>
-        <th>注册时间</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+      <nav class="menu">
+        <button class="menu-item active" data-page="products">
+          <span class="dot"></span> 秒合约产品管理
+        </button>
+        <button class="menu-item" data-page="users">
+          <span class="dot"></span> 用户管理 / 风控限制
+        </button>
+        <button class="menu-item" data-page="settings">
+          <span class="dot"></span> 接口设置
+        </button>
+      </nav>
 
-  <script src="users.js"></script>
+      <div class="sidebar-footer">
+        <div class="tip">
+          提示：后台是中文；前端页面保持英文。<br/>
+          风控只做“限制与禁用”，不做“操纵输赢”。
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧内容 -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1 id="pageTitle">秒合约产品管理</h1>
+          <div class="sub" id="pageSub">新增/编辑秒数、盈利比例、金额限制、启用停用</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn ghost" id="btnRefresh">刷新</button>
+        </div>
+      </header>
+
+      <!-- 页面：产品 -->
+      <section class="card page" id="page-products">
+        <div class="card-head">
+          <h2>产品列表</h2>
+          <div class="actions">
+            <button class="btn" id="btnOpenCreateProduct">新增产品</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" id="productsTable">
+            <thead>
+              <tr>
+                <th style="width:70px;">ID</th>
+                <th>秒数</th>
+                <th>盈利比例</th>
+                <th>最小金额</th>
+                <th>最大金额</th>
+                <th>状态</th>
+                <th style="width:220px;">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="muted small">
+          说明：盈利比例例如 0.8 表示盈利 80%（赢时收益=下单金额*0.8）。实际结算应严格基于公平规则与透明价格源。
+        </div>
+      </section>
+
+      <!-- 页面：用户/风控 -->
+      <section class="card page hidden" id="page-users">
+        <div class="card-head">
+          <h2>用户列表（封号/启用 + 风控限制）</h2>
+          <div class="actions">
+            <input class="input" id="userSearch" placeholder="搜索：用户ID / 用户名（如果后端支持）" />
+            <button class="btn" id="btnSearchUser">搜索</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" id="usersTable">
+            <thead>
+              <tr>
+                <th style="width:90px;">用户ID</th>
+                <th>用户名</th>
+                <th style="width:120px;">状态</th>
+                <th style="width:140px;">单笔限额</th>
+                <th style="width:140px;">每日限额</th>
+                <th style="width:160px;">每日最大亏损</th>
+                <th style="width:240px;">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="muted small">
+          风控说明：这里的限制用于保护平台与用户，不用于操纵交易结果。
+        </div>
+      </section>
+
+      <!-- 页面：设置 -->
+      <section class="card page hidden" id="page-settings">
+        <div class="card-head">
+          <h2>接口设置</h2>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label>API_BASE（后端地址）</label>
+            <input class="input" id="cfgApiBase" placeholder="例如：https://backend-xxx.onrender.com" />
+          </div>
+          <div class="field">
+            <label>ADMIN_KEY（管理密钥）</label>
+            <input class="input" id="cfgAdminKey" placeholder="例如：foxpro_admin_2026" />
+          </div>
+          <div class="field">
+            <label>说明</label>
+            <div class="muted">
+              如果你前后端同域部署，可以把 API_BASE 留空。<br/>
+              保存后会写入浏览器本地存储（localStorage）。
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="btnSaveCfg">保存设置</button>
+          <button class="btn ghost" id="btnResetCfg">恢复默认</button>
+        </div>
+      </section>
+
+      <!-- 弹窗：新增/编辑产品 -->
+      <div class="modal hidden" id="productModal">
+        <div class="modal-backdrop" data-close="1"></div>
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 id="productModalTitle">新增产品</h3>
+            <button class="icon-btn" data-close="1">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label>秒数（seconds）</label>
+                <input class="input" id="pSeconds" type="number" min="1" placeholder="例如：30" />
+              </div>
+              <div class="field">
+                <label>盈利比例（payout_ratio）</label>
+                <input class="input" id="pRatio" type="number" step="0.01" min="0" placeholder="例如：0.8" />
+              </div>
+              <div class="field">
+                <label>最小金额（min_amount）</label>
+                <input class="input" id="pMin" type="number" step="0.01" min="0" placeholder="例如：10" />
+              </div>
+              <div class="field">
+                <label>最大金额（max_amount）</label>
+                <input class="input" id="pMax" type="number" step="0.01" min="0" placeholder="例如：1000" />
+              </div>
+              <div class="field">
+                <label>状态（status）</label>
+                <select class="input" id="pStatus">
+                  <option value="ACTIVE">启用</option>
+                  <option value="DISABLED">停用</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>ID（编辑时自动填）</label>
+                <input class="input" id="pId" type="text" disabled placeholder="新增时为空" />
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-foot">
+            <button class="btn ghost" data-close="1">取消</button>
+            <button class="btn" id="btnSaveProduct">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div class="toast hidden" id="toast"></div>
+    </main>
+  </div>
+
+  <script src="./admin.js"></script>
 </body>
 </html>
