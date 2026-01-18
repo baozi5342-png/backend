@@ -44,3 +44,5 @@ app.listen(PORT, () => {
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "admin", "index.html"));
 });
+const coinsRouter = require("./routes/coins");
+app.use("/api/coins", coinsRouter);
